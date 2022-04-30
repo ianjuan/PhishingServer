@@ -38,10 +38,12 @@ func readConfig() {
 	}
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handler(writer http.ResponseWriter, r *http.Request) {
 	request := duplicateRequest(r)
 	body, header := requestToRealUpstream(request)
 	body = substituteURLInResp(body, header)
+	// duplicate all cookie from target site to host
+	cookieHandler(header, writer)
 	w.Write(body)
 }
 
@@ -58,6 +60,8 @@ func duplicateRequest(r *http.Request) *http.Request {
 	if err != nil {
 		panic(err)
 	}
+	// duplicate original cookie to the request then target site can receive the cookie
+	request.Header["Cookie"] = r.Header["Cookie"]
 	return request
 }
 
@@ -103,4 +107,17 @@ func substituteURLInResp(body []byte, header http.Header) []byte {
 	bodyStr = re.ReplaceAllString(bodyStr, targetGitURL)
 
 	return []byte(bodyStr)
+}
+
+func cookieHandler(header http.Header, writer http.ResponseWriter) http.ResponseWriter {
+	for _, cookie := range header["Set-Cookie"] {
+		// remove domain
+		newValue := strings.Replace(cookie, "domain="+Config.GetString("Cookie.domain")+";", "", -1)
+
+		// remove secure
+		newValue = strings.Replace(newValue, "secure;", "", 1)
+
+		writer.Header().Add("Set-Cookie", newValue)
+	}
+	return writer
 }
